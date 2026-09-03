@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pokémon Adventures">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
+<title>Reagan's Pokémon Adventures</title>
+<style>
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --ball: clamp(84px, 13vmin, 124px);
+    --yellow: #ffcb05;
+    --blue: #2a5bd7;
+    --ink: #1a1a2e;
+    --font: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--ink); color: #fff; font-family: var(--font);
+    overflow: hidden; touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body { position: fixed; inset: 0; }
+  img { pointer-events: none; -webkit-user-drag: none; }
+  .hidden { display: none !important; }
+
+  /* ---------- layers ---------- */
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; background: #000; }
+  #nocam {
+    position: absolute; inset: 0; z-index: 1;
+    background: radial-gradient(ellipse at 50% 30%, #3b6fd8 0%, #1e3a8a 45%, #0f172a 100%);
+  }
+  #nocam::after {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(#fff3 1.5px, transparent 1.5px);
+    background-size: 42px 42px; opacity: .35;
+  }
+  #world { position: absolute; inset: 0; z-index: 2; overflow: hidden; }
+  #edges { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  #fx { position: absolute; inset: 0; z-index: 8; pointer-events: none; width: 100%; height: 100%; }
+
+  /* ---------- pokemon sprites ---------- */
+  .poke {
+    position: absolute; left: 0; top: 0; will-change: transform;
+    display: flex; flex-direction: column; align-items: center;
+    visibility: hidden; pointer-events: none;
+  }
+  .poke.on { visibility: visible; }
+  .poke .img {
+    width: var(--sz); height: var(--sz); object-fit: contain;
+    filter: drop-shadow(0 12px 10px rgba(0,0,0,.45));
+    animation: bob 2.6s ease-in-out infinite;
+  }
+  .poke.shiny .img { filter: drop-shadow(0 0 14px #ffe36e) drop-shadow(0 12px 10px rgba(0,0,0,.45)); }
+  .poke .tag {
+    margin-top: 4px; padding: 4px 12px; border-radius: 999px;
+    background: rgba(0,0,0,.55); color: #fff; font-weight: 700;
+    font-size: clamp(13px, 2.2vmin, 18px); white-space: nowrap;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  .poke .tag .sp { color: var(--yellow); }
+  .poke.absorb { transition: transform .38s cubic-bezier(.5,0,.9,.4), opacity .38s; opacity: 0; }
+  .poke.absorb .img { animation: none; filter: brightness(4) saturate(0) drop-shadow(0 0 20px #ff4d4d); }
+  .poke.pop .img { animation: pop .45s cubic-bezier(.2,1.6,.4,1) 1, bob 2.6s ease-in-out .45s infinite; }
+  .poke.flee { transition: transform 1s ease-in, opacity 1s; opacity: 0; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+  @keyframes pop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+
+  /* ---------- edge arrows ---------- */
+  .edge {
+    position: absolute; left: 0; top: 0; will-change: transform;
+    display: flex; align-items: center; gap: 2px;
+    padding: 4px 8px 4px 4px; border-radius: 999px;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    transform: translate(-50%, -50%);
+  }
+  .edge img { width: 44px; height: 44px; image-rendering: pixelated; }
+  .edge .arrow { font-size: 26px; line-height: 1; color: var(--yellow); display: inline-block; }
+
+  /* ---------- pokeball ---------- */
+  #ball {
+    position: absolute; left: 0; top: 0; width: var(--ball); height: var(--ball);
+    z-index: 4; border-radius: 50%; will-change: transform; cursor: grab;
+    background: linear-gradient(to bottom, #e83b3b 0 45%, #1c1c1c 45% 55%, #f5f5f5 55%);
+    box-shadow: inset -6px -8px 14px rgba(0,0,0,.25), 0 10px 18px rgba(0,0,0,.45);
+    border: 3px solid #1c1c1c;
+  }
+  #ball::before {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 34%; height: 34%;
+    transform: translate(-50%, -50%); border-radius: 50%;
+    background: #f5f5f5; border: 6px solid #1c1c1c; box-sizing: border-box;
+  }
+  #ball::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 16%; height: 16%;
+    transform: translate(-50%, -50%); border-radius: 50%; background: #d8d8d8;
+  }
+  #ball.hint { animation: nudge 1.4s ease-in-out infinite; }
+  #ball.wobble { animation: wobble .62s ease-in-out 1; }
+  #ball.burst { animation: burst .35s ease-out 1 forwards; }
+  #ball.glow { box-shadow: 0 0 0 4px #fff, 0 0 30px 10px #ffe36e, 0 10px 18px rgba(0,0,0,.45); }
+  @keyframes nudge { 0%,100% { margin-top: 0; } 50% { margin-top: -12px; } }
+  @keyframes wobble {
+    0% { rotate: 0deg; } 20% { rotate: -28deg; } 45% { rotate: 24deg; } 70% { rotate: -14deg; } 90% { rotate: 6deg; } 100% { rotate: 0deg; }
+  }
+  @keyframes burst { 0% { filter: brightness(1); } 40% { filter: brightness(3); } 100% { filter: brightness(1); opacity: 0; } }
+
+  /* ---------- hud ---------- */
+  #hud { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  #dexBtn {
+    position: absolute; left: calc(var(--sal) + 12px); top: calc(var(--sat) + 12px);
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px 10px 12px;
+    border: 0; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff;
+    font: 800 clamp(15px, 2.4vmin, 20px) var(--font); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.35);
+  }
+  #dexBtn .dot {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid #1c1c1c;
+    background: linear-gradient(to bottom, #e83b3b 0 44%, #1c1c1c 44% 56%, #f5f5f5 56%);
+  }
+  #radar {
+    position: absolute; left: 50%; top: calc(var(--sat) + 10px); transform: translateX(-50%);
+    width: clamp(88px, 14vmin, 120px); height: clamp(88px, 14vmin, 120px);
+    pointer-events: none;
+  }
+  #msg {
+    position: absolute; left: 50%; top: 32%; transform: translateX(-50%);
+    padding: 12px 22px; border-radius: 16px; background: rgba(0,0,0,.6);
+    font-size: clamp(18px, 3.2vmin, 28px); font-weight: 800; text-align: center; white-space: nowrap;
+    opacity: 0; transition: opacity .4s; pointer-events: none; max-width: 92vw; white-space: normal;
+  }
+  #msg.show { opacity: 1; }
+  #toast {
+    position: absolute; left: 50%; bottom: calc(var(--sab) + var(--ball) + 64px); transform: translateX(-50%);
+    padding: 10px 18px; border-radius: 999px; background: rgba(0,0,0,.7);
+    font-size: clamp(15px, 2.6vmin, 22px); font-weight: 800; opacity: 0; transition: opacity .25s;
+    pointer-events: none; white-space: nowrap; z-index: 7;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ---------- screens ---------- */
+  .screen {
+    position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: calc(var(--sat) + 20px) calc(var(--sar) + 20px) calc(var(--sab) + 20px) calc(var(--sal) + 20px);
+    overflow-y: auto; touch-action: pan-y;
+  }
+  #start { background: radial-gradient(ellipse at 50% 20%, #3b6fd8 0%, #1e3a8a 50%, #0f172a 100%); }
+  #start .logo { width: clamp(110px, 22vmin, 170px); height: auto; filter: drop-shadow(0 12px 16px rgba(0,0,0,.4)); animation: bob 2.6s ease-in-out infinite; }
+  h1 {
+    margin: 12px 0 4px; font-size: clamp(30px, 7vmin, 56px); line-height: 1.05; color: var(--yellow);
+    -webkit-text-stroke: 2px var(--blue); text-shadow: 3px 4px 0 var(--blue), 0 10px 20px rgba(0,0,0,.4);
+    letter-spacing: .5px;
+  }
+  .sub { font-size: clamp(16px, 3vmin, 22px); opacity: .9; margin-bottom: 16px; max-width: 34ch; }
+  .how { display: grid; gap: 10px; margin: 6px 0 22px; text-align: left; font-size: clamp(15px, 2.8vmin, 20px); }
+  .how div { display: flex; align-items: center; gap: 12px; }
+  .how span { font-size: 1.5em; }
+  .btn {
+    padding: 16px 34px; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--yellow); color: var(--ink); font: 900 clamp(20px, 4vmin, 28px) var(--font);
+    box-shadow: 0 6px 0 #c99a00, 0 12px 20px rgba(0,0,0,.35); transition: transform .08s, box-shadow .08s;
+  }
+  .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #c99a00, 0 6px 10px rgba(0,0,0,.35); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.ghost { background: rgba(255,255,255,.15); color: #fff; box-shadow: none; font-size: clamp(16px, 3vmin, 20px); padding: 12px 24px; }
+  .note { margin-top: 18px; font-size: 14px; opacity: .7; max-width: 40ch; }
+
+  #result { background: rgba(10, 12, 40, .82); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  #result .art { width: clamp(180px, 40vmin, 320px); height: clamp(180px, 40vmin, 320px); object-fit: contain; filter: drop-shadow(0 16px 16px rgba(0,0,0,.5)); animation: land .6s cubic-bezier(.2,1.5,.4,1) 1; }
+  #result.shiny .art { filter: drop-shadow(0 0 22px #ffe36e) drop-shadow(0 16px 16px rgba(0,0,0,.5)); }
+  @keyframes land { 0% { transform: scale(0) rotate(-20deg); } 100% { transform: scale(1) rotate(0); } }
+  #result h2 { margin: 6px 0 2px; font-size: clamp(28px, 6vmin, 46px); color: var(--yellow); -webkit-text-stroke: 1.5px var(--blue); text-shadow: 2px 3px 0 var(--blue); }
+  #result .name { font-size: clamp(24px, 5vmin, 38px); font-weight: 900; }
+  .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 10px 0 16px; }
+  .type { padding: 5px 14px; border-radius: 999px; font-weight: 800; font-size: clamp(13px, 2.4vmin, 17px); text-transform: capitalize; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  .pill { padding: 5px 14px; border-radius: 999px; font-weight: 800; font-size: clamp(13px, 2.4vmin, 17px); background: rgba(255,255,255,.18); }
+  .pill.new { background: var(--yellow); color: var(--ink); }
+  .pill.shiny { background: linear-gradient(90deg, #ffe36e, #ff9dd6); color: var(--ink); }
+  .pill.tier-legendary { background: #7c3aed; } .pill.tier-mythical { background: #db2777; } .pill.tier-rare { background: #2563eb; }
+  #result .total { opacity: .85; margin-bottom: 18px; font-size: clamp(15px, 2.8vmin, 20px); }
+
+  #pokedex { background: linear-gradient(180deg, #c8102e 0, #c8102e 0px, #1a1a2e 0) ; justify-content: flex-start; padding-top: calc(var(--sat) + 12px); }
+  #pokedex .bar { width: 100%; max-width: 900px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  #pokedex .bar h2 { margin: 0; font-size: clamp(22px, 4.5vmin, 34px); color: var(--yellow); -webkit-text-stroke: 1px var(--blue); text-shadow: 2px 2px 0 var(--blue); }
+  #pokedex .count { font-weight: 800; opacity: .9; font-size: clamp(14px, 2.6vmin, 18px); }
+  #dexGrid {
+    width: 100%; max-width: 900px; display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); padding-bottom: 20px;
+  }
+  .card {
+    background: rgba(255,255,255,.1); border-radius: 14px; padding: 8px 6px 10px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; position: relative;
+  }
+  .card img { width: 80px; height: 80px; image-rendering: pixelated; }
+  .card .n { font-weight: 800; font-size: 14px; }
+  .card .id { font-size: 12px; opacity: .6; }
+  .card .c { position: absolute; top: 6px; right: 8px; font-size: 12px; font-weight: 800; background: rgba(0,0,0,.45); padding: 2px 7px; border-radius: 999px; }
+  .card .s { position: absolute; top: 6px; left: 8px; font-size: 14px; }
+  .empty { opacity: .75; margin-top: 40px; font-size: clamp(16px, 3vmin, 22px); }
+  #stats { opacity: .6; font-size: 13px; margin: 6px 0 12px; }
+</style>
+</head>
+<body>
+  <video id="cam" autoplay muted playsinline class="hidden"></video>
+  <div id="nocam"></div>
+  <div id="world"></div>
+  <div id="edges"></div>
+  <div id="ball" class="hidden"></div>
+  <canvas id="fx"></canvas>
+
+  <div id="hud" class="hidden">
+    <button id="dexBtn" type="button"><span class="dot"></span><span id="dexCount">0</span></button>
+    <svg id="radar" viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="47" fill="rgba(0,0,0,.55)" stroke="rgba(255,255,255,.35)" stroke-width="2"/>
+      <path d="M50 50 L20 6 A50 50 0 0 1 80 6 Z" fill="rgba(255,203,5,.28)"/>
+      <circle cx="50" cy="50" r="3.5" fill="#fff"/>
+      <g id="radarDots"></g>
+    </svg>
+    <div id="msg"></div>
+  </div>
+  <div id="toast"></div>
+
+  <div id="start" class="screen">
+    <img class="logo" src="icon-512.png" alt="">
+    <h1>Reagan's<br>Pokémon Adventures</h1>
+    <p class="sub">Pokémon are hiding all around your room!</p>
+    <div class="how">
+      <div><span>🔄</span> Turn around to find them</div>
+      <div><span>👆</span> Flick the ball to throw</div>
+      <div><span>📕</span> Fill up your Pokédex</div>
+    </div>
+    <button id="startBtn" class="btn" type="button" disabled>Loading Pokémon…</button>
+    <p class="note" id="startNote">Uses your camera and motion sensors. Say yes when asked!</p>
+  </div>
+
+  <div id="result" class="screen hidden">
+    <h2 id="resTitle">Gotcha!</h2>
+    <img id="resArt" class="art" src="" alt="">
+    <div class="name" id="resName"></div>
+    <div class="badges" id="resBadges"></div>
+    <div class="total" id="resTotal"></div>
+    <button id="resBtn" class="btn" type="button">Keep hunting!</button>
+  </div>
+
+  <div id="pokedex" class="screen hidden">
+    <div class="bar">
+      <h2>Reagan's Pokédex</h2>
+      <span class="count" id="dexTotal"></span>
+      <button id="dexClose" class="btn ghost" type="button">Back</button>
+    </div>
+    <div id="stats"></div>
+    <div id="dexGrid"></div>
+  </div>
+
+<script>
+'use strict';
+
+// =====================================================================
+// 1. CONFIGURATION
+// =====================================================================
+const CONFIG = {
+  storageKey: 'reagans-pokemon-adventures:v1',
+  rosterUrl: 'pokemon.json',
+  sprites: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/',
+  fovDeg: 60,                       // yaw degrees spanned by the longer screen axis
+  spawn: { firstDelay: 1500, minDelay: 6000, maxDelay: 12000, maxActive: 3, lifetime: 45000, inViewChance: 0.3 },
+  tiers: {
+    common:    { weight: 10,  catch: 0.90, label: 'Common' },
+    uncommon:  { weight: 6,   catch: 0.80, label: 'Uncommon' },
+    rare:      { weight: 3,   catch: 0.65, label: 'Rare' },
+    legendary: { weight: 1,   catch: 0.45, label: 'Legendary' },
+    mythical:  { weight: 0.4, catch: 0.35, label: 'Mythical' },
+  },
+  gen1Boost: 1.6,
+  shinyRate: 1 / 50,
+  maxEscapes: 2,
+  escapeBonus: 0.12,                // catch odds improve after each escape
+  throw: { minSpeed: 0.35, aimCone: 40, flightMs: 650 },
+  wobbleMs: 640,
+  smoothing: 0.22,
+};
+const TYPE_COLORS = {
+  normal: '#A8A77A', fire: '#EE8130', water: '#6390F0', electric: '#E8B900', grass: '#7AC74C', ice: '#5FC7C2',
+  fighting: '#C22E28', poison: '#A33EA1', ground: '#D3A94A', flying: '#A98FF3', psychic: '#F95587', bug: '#A6B91A',
+  rock: '#B6A136', ghost: '#735797', dragon: '#6F35FC', dark: '#705746', steel: '#8E8EB0', fairy: '#D685AD',
+};
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const artUrl = (id, shiny) => CONFIG.sprites + 'other/official-artwork/' + (shiny ? 'shiny/' : '') + id + '.png';
+const thumbUrl = id => CONFIG.sprites + id + '.png';
+
+// =====================================================================
+// 2. PERSISTENT STATE
+// =====================================================================
+const DEFAULT_SAVE = { v: 1, caught: {}, stats: { throws: 0, hits: 0, catches: 0, shinies: 0 } };
+function loadSave() {
+  try {
+    const raw = localStorage.getItem(CONFIG.storageKey);
+    if (!raw) return structuredClone(DEFAULT_SAVE);
+    const d = JSON.parse(raw);
+    if (!d || d.v !== 1) return structuredClone(DEFAULT_SAVE);
+    return { v: 1, caught: d.caught || {}, stats: Object.assign({}, DEFAULT_SAVE.stats, d.stats || {}) };
+  } catch (e) { return structuredClone(DEFAULT_SAVE); }
+}
+function persist() { try { localStorage.setItem(CONFIG.storageKey, JSON.stringify(save)); } catch (e) {} }
+const save = loadSave();
+
+// =====================================================================
+// 3. LIVE SESSION STATE
+// =====================================================================
+const S = {
+  phase: 'start',            // start | hunt | throw | wobble | result | pokedex
+  roster: [], byId: new Map(), cumWeights: [], totalWeight: 0,
+  sensors: 'unknown',        // unknown | gyro | drag
+  raw: { yaw: 0, pitch: 0 }, view: { yaw: 0, pitch: 0 },
+  active: [], uid: 0,
+  spawnTimer: null,
+  layout: { w: 0, h: 0, cx: 0, cy: 0, pxPerDeg: 1, spriteBase: 100 },
+  ball: { x: 0, y: 0, scale: 1, rot: 0, drag: null, samples: [], attached: null, flight: null },
+  hintedThrow: false,
+  particles: [],
+  lookDrag: null,
+  camStream: null,
+};
+
+// =====================================================================
+// 4. GAME RULES (pure-ish helpers)
+// =====================================================================
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const wrap180 = d => ((d + 540) % 360) - 180;
+
+function buildWeights(roster) {
+  let total = 0; const cum = [];
+  for (const p of roster) {
+    const w = (CONFIG.tiers[p.r] || CONFIG.tiers.common).weight * (p.g === 1 ? CONFIG.gen1Boost : 1);
+    total += w; cum.push(total);
+  }
+  S.cumWeights = cum; S.totalWeight = total;
+}
+function pickSpecies() {
+  const r = Math.random() * S.totalWeight;
+  let lo = 0, hi = S.cumWeights.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (S.cumWeights[mid] < r) lo = mid + 1; else hi = mid; }
+  return S.roster[lo];
+}
+const rollShiny = () => Math.random() < CONFIG.shinyRate;
+function catchChance(spawn) {
+  const base = (CONFIG.tiers[spawn.p.r] || CONFIG.tiers.common).catch;
+  return clamp(base + spawn.escapes * CONFIG.escapeBonus, 0, 0.97);
+}
+function screenPos(spawn) {
+  const L = S.layout;
+  const dx = wrap180(spawn.yaw - S.view.yaw) * L.pxPerDeg;
+  const dy = -(spawn.pitch - S.view.pitch) * L.pxPerDeg;
+  const x = L.cx + dx, y = L.cy + dy;
+  const m = L.spriteBase * spawn.scale * 0.5;
+  const on = x > -m && x < L.w + m && y > -m && y < L.h + m;
+  return { x, y, on, dx, dy };
+}
+function chooseTarget(vec, from) {
+  let best = null, bestAng = CONFIG.throw.aimCone;
+  const L = S.layout;
+  for (const sp of S.active) {
+    if (sp.state !== 'idle') continue;
+    const pos = screenPos(sp);
+    if (pos.x < -L.w * 0.1 || pos.x > L.w * 1.1 || pos.y < -L.h * 0.1 || pos.y > L.h * 0.92) continue;
+    const tx = pos.x - from.x, ty = pos.y - from.y;
+    const len = Math.hypot(tx, ty) || 1;
+    const dot = clamp((tx * vec.x + ty * vec.y) / len, -1, 1);
+    const ang = Math.acos(dot) * R2D;
+    if (ang < bestAng) { bestAng = ang; best = sp; }
+  }
+  return best;
+}
+
+// =====================================================================
+// 5. RENDERING
+// =====================================================================
+const $ = id => document.getElementById(id);
+const el = {
+  cam: $('cam'), nocam: $('nocam'), world: $('world'), edges: $('edges'), ball: $('ball'), fx: $('fx'),
+  hud: $('hud'), dexBtn: $('dexBtn'), dexCount: $('dexCount'), radarDots: $('radarDots'), msg: $('msg'), toast: $('toast'),
+  start: $('start'), startBtn: $('startBtn'), startNote: $('startNote'),
+  result: $('result'), resTitle: $('resTitle'), resArt: $('resArt'), resName: $('resName'), resBadges: $('resBadges'), resTotal: $('resTotal'), resBtn: $('resBtn'),
+  pokedex: $('pokedex'), dexGrid: $('dexGrid'), dexTotal: $('dexTotal'), dexClose: $('dexClose'), stats: $('stats'),
+};
+const ctx = el.fx.getContext('2d');
+
+function layout() {
+  const L = S.layout;
+  L.w = window.innerWidth; L.h = window.innerHeight;
+  L.cx = L.w / 2; L.cy = L.h / 2;
+  L.pxPerDeg = Math.max(L.w, L.h) / CONFIG.fovDeg;
+  L.spriteBase = Math.min(L.w, L.h) * 0.36;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  el.fx.width = Math.round(L.w * dpr); el.fx.height = Math.round(L.h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const b = ballSize();
+  L.ballHome = { x: L.cx, y: L.h - safeBottom() - 36 - b / 2 };
+  if (!S.ball.drag && !S.ball.flight && !S.ball.attached) { S.ball.x = L.ballHome.x; S.ball.y = L.ballHome.y; }
+  for (const sp of S.active) sp.el.style.setProperty('--sz', (L.spriteBase * sp.scale) + 'px');
+}
+function ballSize() { return el.ball.offsetWidth || 96; }
+function safeBottom() {
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--sab');
+  const n = parseFloat(v); return isNaN(n) ? 0 : n;
+}
+function countCaught() { return Object.keys(save.caught).length; }
+function renderHud() { el.dexCount.textContent = countCaught(); }
+
+function renderFrame(now) {
+  // smooth the view toward the sensor reading
+  S.view.yaw += wrap180(S.raw.yaw - S.view.yaw) * CONFIG.smoothing;
+  S.view.pitch += (S.raw.pitch - S.view.pitch) * CONFIG.smoothing;
+  const L = S.layout;
+
+  // pokemon + edge arrows + radar
+  let dots = '';
+  for (const sp of S.active) {
+    const pos = screenPos(sp);
+    if (sp.state === 'idle' || sp.state === 'flee') {
+      sp.el.style.transform = `translate3d(${pos.x - L.spriteBase * sp.scale / 2}px, ${pos.y - L.spriteBase * sp.scale / 2}px, 0)`;
+      sp.el.classList.toggle('on', pos.on || sp.state === 'flee');
+    }
+    const showEdge = sp.state === 'idle' && !pos.on;
+    sp.edge.style.display = showEdge ? 'flex' : 'none';
+    if (showEdge) {
+      const ang = Math.atan2(pos.dy, pos.dx);
+      const inset = 46 + safeBottom();
+      const hw = L.cx - inset, hh = L.cy - inset - 60;
+      const t = Math.min(hw / Math.abs(Math.cos(ang) || 1e-6), hh / Math.abs(Math.sin(ang) || 1e-6));
+      const ex = L.cx + Math.cos(ang) * t, ey = L.cy + Math.sin(ang) * t + 30;
+      sp.edge.style.transform = `translate3d(${ex}px, ${ey}px, 0) translate(-50%, -50%)`;
+      sp.edgeArrow.style.transform = `rotate(${ang * R2D}deg)`;
+    }
+    if (sp.state === 'idle') {
+      const a = wrap180(sp.yaw - S.view.yaw) * D2R;
+      const rx = 50 + Math.sin(a) * 36, ry = 50 - Math.cos(a) * 36;
+      const col = sp.shiny ? '#ffe36e' : (sp.p.r === 'legendary' || sp.p.r === 'mythical') ? '#c084fc' : '#ff5252';
+      dots += `<circle cx="${rx.toFixed(1)}" cy="${ry.toFixed(1)}" r="5" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
+    }
+  }
+  if (dots !== S.lastDots) { el.radarDots.innerHTML = dots; S.lastDots = dots; }
+
+  // ball
+  const B = S.ball;
+  if (B.flight) stepFlight(now);
+  else if (B.attached) {
+    const pos = screenPos(B.attached);
+    B.x = pos.x; B.y = pos.y + L.spriteBase * B.attached.scale * 0.42;
+  }
+  const b = ballSize();
+  el.ball.style.transform = `translate3d(${B.x - b / 2}px, ${B.y - b / 2}px, 0) scale(${B.scale}) rotate(${B.rot}deg)`;
+
+  stepParticles();
+  requestAnimationFrame(renderFrame);
+}
+
+function renderResult(spawn, isNew) {
+  el.result.classList.toggle('shiny', spawn.shiny);
+  el.resTitle.textContent = spawn.shiny ? '✨ Shiny! ✨' : 'Gotcha!';
+  el.resArt.src = spawn.src;
+  el.resName.textContent = spawn.p.n;
+  let badges = spawn.p.t.map(t => `<span class="type" style="background:${TYPE_COLORS[t] || '#777'}">${t}</span>`).join('');
+  if (isNew) badges += '<span class="pill new">NEW!</span>';
+  if (spawn.shiny) badges += '<span class="pill shiny">Shiny</span>';
+  if (spawn.p.r !== 'common' && spawn.p.r !== 'uncommon') badges += `<span class="pill tier-${spawn.p.r}">${CONFIG.tiers[spawn.p.r].label}</span>`;
+  el.resBadges.innerHTML = badges;
+  const n = countCaught();
+  el.resTotal.textContent = `Reagan has caught ${n} Pokémon!`;
+  el.result.classList.remove('hidden');
+}
+
+function renderPokedex() {
+  const ids = Object.keys(save.caught).map(Number).sort((a, b) => a - b);
+  el.dexTotal.textContent = `${ids.length} / ${S.roster.length}`;
+  el.stats.textContent = `${save.stats.throws} throws · ${save.stats.catches} catches · ${save.stats.shinies} shiny`;
+  if (!ids.length) { el.dexGrid.innerHTML = '<div class="empty">No Pokémon yet. Go catch some!</div>'; return; }
+  el.dexGrid.innerHTML = ids.map(id => {
+    const p = S.byId.get(id), c = save.caught[id];
+    if (!p) return '';
+    return `<div class="card">${c.s ? '<span class="s">✨</span>' : ''}<span class="c">×${c.c}</span>` +
+      `<img src="${thumbUrl(id)}" alt="" loading="lazy"><span class="n">${p.n}</span><span class="id">#${String(id).padStart(3, '0')}</span></div>`;
+  }).join('');
+}
+
+let toastTimer = null;
+function toast(text, ms = 1600) {
+  el.toast.textContent = text; el.toast.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.toast.classList.remove('show'), ms);
+}
+let msgTimer = null;
+function message(text, ms = 3500) {
+  el.msg.textContent = text; el.msg.classList.add('show');
+  clearTimeout(msgTimer); msgTimer = setTimeout(() => el.msg.classList.remove('show'), ms);
+}
+
+// =====================================================================
+// 6. EFFECTS: audio, particles, ball flight
+// =====================================================================
+let audio = null;
+function initAudio() {
+  if (audio) return;
+  try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
+}
+function tone(freq, dur, type = 'sine', vol = 0.25, slideTo = null, when = 0) {
+  if (!audio) return;
+  const t0 = audio.currentTime + when;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function noise(dur, vol = 0.2, from = 800, to = 200) {
+  if (!audio) return;
+  const n = Math.floor(audio.sampleRate * dur), buf = audio.createBuffer(1, n, audio.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const src = audio.createBufferSource(); src.buffer = buf;
+  const f = audio.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(from, audio.currentTime);
+  f.frequency.exponentialRampToValueAtTime(to, audio.currentTime + dur);
+  const g = audio.createGain(); g.gain.setValueAtTime(vol, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + dur);
+  src.connect(f).connect(g).connect(audio.destination); src.start();
+}
+const sfx = {
+  whoosh: () => noise(0.35, 0.3, 300, 2500),
+  hit: () => { tone(900, 0.15, 'square', 0.15, 300); noise(0.12, 0.15, 3000, 800); },
+  tick: () => tone(420, 0.08, 'square', 0.12, 380),
+  catch: () => { tone(660, 0.14, 'triangle', 0.3); tone(880, 0.14, 'triangle', 0.3, null, 0.14); tone(1320, 0.5, 'triangle', 0.3, null, 0.28); },
+  escape: () => { tone(500, 0.3, 'sawtooth', 0.18, 180); noise(0.25, 0.25, 2000, 400); },
+  spawn: () => { tone(1200, 0.12, 'sine', 0.12); tone(1600, 0.18, 'sine', 0.12, null, 0.1); },
+  flee: () => tone(700, 0.35, 'sine', 0.12, 250),
+  miss: () => tone(300, 0.2, 'triangle', 0.12, 200),
+};
+
+function burst(x, y, n, colors, speed = 6, gravity = 0.18, life = 60) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = rand(speed * 0.3, speed);
+    S.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - speed * 0.4, g: gravity, life, max: life,
+      c: colors[i % colors.length], r: rand(3, 7), shape: Math.random() < 0.5 ? 'rect' : 'dot', rot: Math.random() * 6, vr: rand(-0.2, 0.2) });
+  }
+}
+function confetti() {
+  const L = S.layout, cols = ['#ffcb05', '#2a5bd7', '#ff5252', '#4ade80', '#f472b6', '#fff'];
+  for (let i = 0; i < 140; i++) {
+    S.particles.push({ x: rand(0, L.w), y: rand(-L.h * 0.3, 0), vx: rand(-1, 1), vy: rand(2, 5), g: 0.06, life: 160, max: 160,
+      c: cols[i % cols.length], r: rand(4, 8), shape: 'rect', rot: Math.random() * 6, vr: rand(-0.15, 0.15) });
+  }
+}
+function stepParticles() {
+  const L = S.layout;
+  ctx.clearRect(0, 0, L.w, L.h);
+  if (!S.particles.length) return;
+  const keep = [];
+  for (const p of S.particles) {
+    p.x += p.vx; p.y += p.vy; p.vy += p.g; p.rot += p.vr; p.life--;
+    if (p.life <= 0 || p.y > L.h + 20) continue;
+    ctx.globalAlpha = Math.min(1, p.life / (p.max * 0.3));
+    ctx.fillStyle = p.c;
+    if (p.shape === 'dot') { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
+    else { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); ctx.restore(); }
+    keep.push(p);
+  }
+  ctx.globalAlpha = 1;
+  S.particles = keep;
+}
+
+function stepFlight(now) {
+  const B = S.ball, F = B.flight, L = S.layout;
+  const t = clamp((now - F.t0) / F.dur, 0, 1);
+  const e = 1 - Math.pow(1 - t, 2);
+  let ex = F.ex, ey = F.ey;
+  if (F.target) { const pos = screenPos(F.target); ex = pos.x; ey = pos.y; }
+  B.x = F.sx + (ex - F.sx) * e;
+  B.y = F.sy + (ey - F.sy) * e - Math.sin(t * Math.PI) * F.arc;
+  B.scale = 1 - (1 - F.endScale) * e;
+  B.rot = F.spin * t;
+  if (t >= 1) { B.flight = null; F.done(); }
+}
+
+// =====================================================================
+// 7. GAME FLOW: spawning, throwing, catching
+// =====================================================================
+function preload(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+function scheduleSpawn(delay) {
+  clearTimeout(S.spawnTimer);
+  S.spawnTimer = setTimeout(spawnOne, delay);
+}
+
+async function spawnOne() {
+  if (S.phase !== 'hunt') { scheduleSpawn(2000); return; }
+  if (S.active.filter(s => s.state === 'idle').length >= CONFIG.spawn.maxActive) { scheduleSpawn(2500); return; }
+  const p = pickSpecies(), shiny = rollShiny(), src = artUrl(p.i, shiny);
+  try { await preload(src); } catch (e) { scheduleSpawn(1500); return; }
+  if (S.phase !== 'hunt') { scheduleSpawn(1500); return; }
+  placeSpawn(p, shiny, src);
+  scheduleSpawn(rand(CONFIG.spawn.minDelay, CONFIG.spawn.maxDelay));
+}
+function placeSpawn(p, shiny, src, yawOverride) {
+  const L = S.layout;
+  let yaw;
+  if (yawOverride != null) yaw = yawOverride;
+  else if (Math.random() < CONFIG.spawn.inViewChance) yaw = S.view.yaw + rand(-CONFIG.fovDeg * 0.3, CONFIG.fovDeg * 0.3);
+  else yaw = S.view.yaw + (Math.random() < 0.5 ? -1 : 1) * rand(35, 160);
+  const pitch = clamp(S.view.pitch, -25, 25) + rand(-8, 8);
+  const scale = rand(0.8, 1.15);
+
+  const node = document.createElement('div');
+  node.className = 'poke' + (shiny ? ' shiny' : '');
+  node.style.setProperty('--sz', (L.spriteBase * scale) + 'px');
+  node.innerHTML = `<img class="img" src="${src}" alt="" draggable="false"><span class="tag">${shiny ? '<span class="sp">✨</span> ' : ''}${p.n}</span>`;
+  el.world.appendChild(node);
+
+  const edge = document.createElement('div');
+  edge.className = 'edge'; edge.style.display = 'none';
+  edge.innerHTML = `<span class="arrow">➜</span><img src="${thumbUrl(p.i)}" alt="" draggable="false">`;
+  el.edges.appendChild(edge);
+
+  const spawn = { uid: ++S.uid, p, shiny, src, yaw, pitch, scale, el: node, edge, edgeArrow: edge.firstChild, born: performance.now(), escapes: 0, state: 'idle' };
+  S.active.push(spawn);
+  spawn.lifeTimer = setTimeout(() => flee(spawn, false), CONFIG.spawn.lifetime);
+  sfx.spawn();
+  if (shiny) toast('✨ A shiny Pokémon appeared! ✨', 2600);
+  if (!S.hintedThrow) {
+    S.hintedThrow = true;
+    setTimeout(() => { if (S.phase === 'hunt') { message('Flick the ball to catch it!', 3000); el.ball.classList.add('hint'); } }, 600);
+  }
+  return spawn;
+}
+function removeSpawn(spawn) {
+  clearTimeout(spawn.lifeTimer);
+  spawn.el.remove(); spawn.edge.remove();
+  S.active = S.active.filter(s => s !== spawn);
+}
+function flee(spawn, loud) {
+  if (spawn.state !== 'idle') return;
+  spawn.state = 'flee';
+  spawn.el.classList.add('flee');
+  const L = S.layout, pos = screenPos(spawn);
+  spawn.el.style.transform = `translate3d(${pos.x - L.spriteBase * spawn.scale / 2}px, ${pos.y - L.spriteBase * spawn.scale / 2 - 160}px, 0)`;
+  if (loud) { toast(`${spawn.p.n} ran away!`, 1800); sfx.flee(); }
+  setTimeout(() => removeSpawn(spawn), 1000);
+}
+
+function throwBall(vec) {
+  if (S.phase !== 'hunt') return;
+  S.phase = 'throw';
+  el.ball.classList.remove('hint');
+  save.stats.throws++;
+  const from = { x: S.ball.x, y: S.ball.y };
+  const target = chooseTarget(vec, from);
+  const L = S.layout;
+  sfx.whoosh();
+  S.ball.flight = {
+    t0: performance.now(), dur: CONFIG.throw.flightMs, sx: from.x, sy: from.y,
+    ex: from.x + vec.x * L.h * 0.9, ey: from.y + vec.y * L.h * 0.9,
+    target, arc: L.h * 0.16, endScale: target ? 0.42 : 0.18, spin: 720,
+    done: () => target ? hit(target) : miss(),
+  };
+}
+function miss() {
+  sfx.miss();
+  toast('Missed!', 1000);
+  el.ball.classList.add('burst');
+  setTimeout(() => { resetBall(); S.phase = 'hunt'; }, 350);
+}
+function resetBall() {
+  const B = S.ball, L = S.layout;
+  B.flight = null; B.attached = null; B.scale = 1; B.rot = 0;
+  B.x = L.ballHome.x; B.y = L.ballHome.y;
+  el.ball.classList.remove('burst', 'wobble', 'glow');
+}
+async function hit(spawn) {
+  save.stats.hits++;
+  sfx.hit();
+  S.phase = 'wobble';
+  const pos = screenPos(spawn);
+  burst(pos.x, pos.y, 26, ['#fff', '#ffe36e', '#ff8a8a'], 7, 0.12, 40);
+  // absorb the pokemon into the ball
+  spawn.state = 'inBall';
+  clearTimeout(spawn.lifeTimer);
+  spawn.el.classList.add('absorb');
+  const L = S.layout;
+  spawn.el.style.transform = `translate3d(${S.ball.x - L.spriteBase * spawn.scale / 2}px, ${S.ball.y - L.spriteBase * spawn.scale / 2}px, 0) scale(0)`;
+  await wait(380);
+  spawn.el.classList.remove('on');
+  // ball drops to the "ground" under where the pokemon stood
+  S.ball.attached = spawn; S.ball.scale = 0.42; S.ball.rot = 0;
+  await wait(320);
+  // wobble
+  const caught = Math.random() < catchChance(spawn);
+  const wobbles = caught ? 3 : 1 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < wobbles; i++) {
+    el.ball.classList.remove('wobble'); void el.ball.offsetWidth; el.ball.classList.add('wobble');
+    sfx.tick();
+    await wait(CONFIG.wobbleMs + 120);
+  }
+  if (caught) return captured(spawn);
+  // broke free
+  sfx.escape();
+  el.ball.classList.add('burst');
+  spawn.escapes++;
+  spawn.state = 'idle';
+  spawn.el.classList.remove('absorb'); spawn.el.classList.add('pop', 'on');
+  setTimeout(() => spawn.el.classList.remove('pop'), 500);
+  await wait(350);
+  resetBall();
+  S.phase = 'hunt';
+  if (spawn.escapes >= CONFIG.maxEscapes) { flee(spawn, true); }
+  else { toast(`${spawn.p.n} broke free!`, 1500); spawn.lifeTimer = setTimeout(() => flee(spawn, false), CONFIG.spawn.lifetime); }
+}
+async function captured(spawn) {
+  sfx.catch();
+  el.ball.classList.add('glow');
+  burst(S.ball.x, S.ball.y, 40, ['#ffe36e', '#fff', '#ffcb05'], 8, 0.1, 55);
+  const id = spawn.p.i;
+  const rec = save.caught[id] || { c: 0, s: 0, f: new Date().toISOString() };
+  const isNew = rec.c === 0;
+  rec.c++; if (spawn.shiny) rec.s++;
+  save.caught[id] = rec;
+  save.stats.catches++; if (spawn.shiny) save.stats.shinies++;
+  persist(); renderHud();
+  await wait(650);
+  removeSpawn(spawn);
+  resetBall();
+  S.phase = 'result';
+  confetti();
+  renderResult(spawn, isNew);
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+// =====================================================================
+// 8. INPUT: sensors, camera, pointer, buttons
+// =====================================================================
+let gotOrientation = false;
+function onOrientation(e) {
+  if (e.alpha == null || e.beta == null || e.gamma == null) return;
+  if (!gotOrientation) { gotOrientation = true; S.sensors = 'gyro'; }
+  const a = e.alpha * D2R, b = e.beta * D2R, g = e.gamma * D2R;
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cg = Math.cos(g), sg = Math.sin(g);
+  // direction the rear camera points (device -Z axis) in the earth frame: x east, y north, z up
+  const vx = -(ca * sg + sa * sb * cg);
+  const vy = -(sa * sg - ca * sb * cg);
+  const vz = -(cb * cg);
+  S.raw.yaw = Math.atan2(vx, vy) * R2D;
+  S.raw.pitch = Math.asin(clamp(vz, -1, 1)) * R2D;
+}
+async function enableMotion() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== 'granted') return false;
+    }
+  } catch (e) { return false; }
+  window.addEventListener('deviceorientation', onOrientation);
+  return true;
+}
+function enableDragLook(reason) {
+  if (S.sensors === 'drag') return;
+  S.sensors = 'drag';
+  window.removeEventListener('deviceorientation', onOrientation);
+  message(reason || 'Drag the screen to look around', 4000);
+}
+async function enableCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    S.camStream = stream;
+    el.cam.srcObject = stream;
+    el.cam.classList.remove('hidden');
+    await el.cam.play().catch(() => {});
+    return true;
+  } catch (e) { return false; }
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || S.phase === 'start') return;
+  const track = S.camStream && S.camStream.getVideoTracks()[0];
+  if (!track || track.readyState === 'ended') await enableCamera();
+  else el.cam.play().catch(() => {});
+});
+
+// pokeball drag + flick
+el.ball.addEventListener('pointerdown', e => {
+  if (S.phase !== 'hunt') return;
+  e.preventDefault();
+  el.ball.setPointerCapture(e.pointerId);
+  el.ball.classList.remove('hint');
+  S.ball.drag = { id: e.pointerId, ox: e.clientX - S.ball.x, oy: e.clientY - S.ball.y };
+  S.ball.samples = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
+});
+el.ball.addEventListener('pointermove', e => {
+  const d = S.ball.drag; if (!d || d.id !== e.pointerId) return;
+  e.preventDefault();
+  S.ball.x = e.clientX - d.ox; S.ball.y = e.clientY - d.oy;
+  const s = S.ball.samples; s.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+  while (s.length > 12) s.shift();
+});
+function endDrag(e) {
+  const d = S.ball.drag; if (!d || d.id !== e.pointerId) return;
+  S.ball.drag = null;
+  const s = S.ball.samples, now = performance.now();
+  // velocity over the last ~100ms of movement; fall back to the last two samples for coarse input
+  let recent = s.filter(p => now - p.t <= 100);
+  if (recent.length < 2) recent = s.slice(-2);
+  const a = recent[0], b = recent[recent.length - 1];
+  if (!a || !b || a === b) { resetBall(); return; }
+  const dt = clamp(b.t - a.t, 1, 150), dx = b.x - a.x, dy = b.y - a.y;
+  const speed = Math.hypot(dx, dy) / dt;
+  if (speed >= CONFIG.throw.minSpeed && dy < 0) {
+    const len = Math.hypot(dx, dy);
+    throwBall({ x: dx / len, y: dy / len });
+  } else {
+    resetBall();
+  }
+}
+el.ball.addEventListener('pointerup', endDrag);
+el.ball.addEventListener('pointercancel', endDrag);
+
+// drag-to-look fallback (only when there are no motion sensors)
+el.world.addEventListener('pointerdown', e => {
+  if (S.sensors !== 'drag' || S.phase !== 'hunt') return;
+  S.lookDrag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+  el.world.setPointerCapture(e.pointerId);
+});
+el.world.addEventListener('pointermove', e => {
+  const d = S.lookDrag; if (!d || d.id !== e.pointerId) return;
+  const L = S.layout;
+  S.raw.yaw -= (e.clientX - d.x) / L.pxPerDeg;
+  S.raw.pitch = clamp(S.raw.pitch + (e.clientY - d.y) / L.pxPerDeg, -80, 80);
+  d.x = e.clientX; d.y = e.clientY;
+});
+const endLook = e => { if (S.lookDrag && S.lookDrag.id === e.pointerId) S.lookDrag = null; };
+el.world.addEventListener('pointerup', endLook);
+el.world.addEventListener('pointercancel', endLook);
+window.addEventListener('keydown', e => {
+  if (S.sensors !== 'drag') return;
+  const step = 6;
+  if (e.key === 'ArrowLeft') S.raw.yaw -= step; if (e.key === 'ArrowRight') S.raw.yaw += step;
+  if (e.key === 'ArrowUp') S.raw.pitch = clamp(S.raw.pitch + step, -80, 80); if (e.key === 'ArrowDown') S.raw.pitch = clamp(S.raw.pitch - step, -80, 80);
+});
+
+// screens + buttons
+el.startBtn.addEventListener('click', startGame);
+el.resBtn.addEventListener('click', () => { el.result.classList.add('hidden'); S.phase = 'hunt'; });
+el.dexBtn.addEventListener('click', () => { if (S.phase !== 'hunt') return; S.phase = 'pokedex'; renderPokedex(); el.pokedex.classList.remove('hidden'); });
+el.dexClose.addEventListener('click', () => { el.pokedex.classList.add('hidden'); S.phase = 'hunt'; });
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('gesturestart', e => e.preventDefault());
+window.addEventListener('resize', layout);
+window.addEventListener('orientationchange', () => setTimeout(layout, 250));
+
+async function startGame() {
+  el.startBtn.disabled = true;
+  initAudio();
+  const motionPromise = enableMotion();           // must start inside the tap
+  const camOk = await enableCamera();
+  const motionOk = await motionPromise;
+  el.start.classList.add('hidden');
+  el.hud.classList.remove('hidden');
+  el.ball.classList.remove('hidden');
+  layout(); resetBall(); renderHud();
+  S.phase = 'hunt';
+  if (!camOk) { el.nocam.classList.remove('hidden'); toast('No camera, but the Pokémon are still here!', 2500); }
+  else el.nocam.classList.add('hidden');
+  if (!motionOk) enableDragLook('Drag the screen to look around');
+  else {
+    setTimeout(() => { if (!gotOrientation) enableDragLook('Drag the screen to look around'); else message('Turn around to find Pokémon!', 3500); }, 1500);
+  }
+  scheduleSpawn(CONFIG.spawn.firstDelay);
+}
+
+// =====================================================================
+// 9. BOOT
+// =====================================================================
+async function boot() {
+  layout();
+  requestAnimationFrame(renderFrame);
+  try {
+    const r = await fetch(CONFIG.rosterUrl, { cache: 'force-cache' });
+    if (!r.ok) throw new Error('roster ' + r.status);
+    const data = await r.json();
+    S.roster = data.pokemon;
+    for (const p of S.roster) S.byId.set(p.i, p);
+    buildWeights(S.roster);
+    el.startBtn.textContent = 'Start Adventure!';
+    el.startBtn.disabled = false;
+  } catch (e) {
+    el.startBtn.textContent = 'Could not load Pokémon';
+    el.startNote.textContent = 'Check the internet connection and reload the page.';
+  }
+}
+boot();
+
+// debugging hooks for desktop testing (harmless in production)
+window.__game = { S, CONFIG, save, spawnNow: (id, shiny) => { const p = id ? S.byId.get(id) : pickSpecies(); return placeSpawn(p, !!shiny, artUrl(p.i, !!shiny), S.view.yaw); }, throwBall, layout };
+</script>
+</body>
+</html>
