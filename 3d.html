@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
+<title>3D Prototype · Reagan's Pokémon Adventures</title>
+<style>
+  :root {
+    --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+    --yellow: #ffcb05; --blue: #2a5bd7; --ink: #1a1a2e;
+    --font: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; width: 100%; height: 100%; background: var(--ink); color: #fff; font-family: var(--font);
+    overflow: hidden; touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  body { position: fixed; inset: 0; }
+  .hidden { display: none !important; }
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; background: #000; }
+  #nocam { position: absolute; inset: 0; z-index: 1; background: radial-gradient(ellipse at 50% 30%, #3b6fd8 0%, #1e3a8a 45%, #0f172a 100%); }
+  #gl { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; display: block; }
+
+  #hud { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  #status {
+    position: absolute; left: 50%; top: calc(var(--sat) + 12px); transform: translateX(-50%);
+    padding: 8px 16px; border-radius: 999px; background: rgba(0,0,0,.6); font-weight: 800;
+    font-size: clamp(13px, 2.4vmin, 17px); white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis;
+  }
+  .rbtn {
+    position: absolute; width: 48px; height: 48px; border: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff;
+    font-size: 22px; box-shadow: 0 4px 12px rgba(0,0,0,.35);
+  }
+  #panelBtn { right: calc(var(--sar) + 12px); top: calc(var(--sat) + 12px); }
+  #frontBtn {
+    position: absolute; left: 50%; bottom: calc(var(--sab) + 24px); transform: translateX(-50%);
+    padding: 14px 26px; border: 0; border-radius: 999px; background: var(--yellow); color: var(--ink);
+    font: 900 clamp(16px, 3vmin, 22px) var(--font); box-shadow: 0 5px 0 #c99a00, 0 10px 18px rgba(0,0,0,.35);
+  }
+  #frontBtn:active { transform: translateX(-50%) translateY(4px); box-shadow: 0 1px 0 #c99a00; }
+  #panel {
+    position: absolute; right: calc(var(--sar) + 12px); top: calc(var(--sat) + 68px); width: min(320px, calc(100vw - 24px));
+    padding: 12px 14px; border-radius: 16px; background: rgba(0,0,0,.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    font-size: 14px; display: grid; gap: 8px; max-height: calc(100vh - var(--sat) - var(--sab) - 150px); overflow-y: auto; touch-action: pan-y;
+  }
+  #panel label { display: grid; grid-template-columns: 92px 1fr 46px; align-items: center; gap: 8px; }
+  #panel label.row { grid-template-columns: 92px 1fr; }
+  #panel input[type=range] { width: 100%; }
+  #panel select, #panel input[type=number] { width: 100%; padding: 6px; border-radius: 8px; border: 0; font: inherit; }
+  #panel .val { text-align: right; font-variant-numeric: tabular-nums; opacity: .85; }
+  #panel .small { font-size: 12px; opacity: .7; }
+  #panel button { padding: 8px 12px; border: 0; border-radius: 10px; background: rgba(255,255,255,.15); color: #fff; font: 800 14px var(--font); }
+
+  #start {
+    position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    padding: 24px; background: radial-gradient(ellipse at 50% 20%, #3b6fd8 0%, #1e3a8a 50%, #0f172a 100%);
+  }
+  h1 { margin: 12px 0 6px; font-size: clamp(26px, 6vmin, 44px); color: var(--yellow); -webkit-text-stroke: 1.5px var(--blue); text-shadow: 3px 4px 0 var(--blue); }
+  .sub { opacity: .9; margin-bottom: 20px; max-width: 36ch; font-size: clamp(15px, 2.8vmin, 20px); }
+  .btn { padding: 16px 34px; border: 0; border-radius: 999px; background: var(--yellow); color: var(--ink); font: 900 clamp(20px, 4vmin, 28px) var(--font); box-shadow: 0 6px 0 #c99a00, 0 12px 20px rgba(0,0,0,.35); }
+  .btn:disabled { opacity: .55; }
+  .note { margin-top: 16px; font-size: 13px; opacity: .7; max-width: 40ch; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+  <video id="cam" autoplay muted playsinline class="hidden"></video>
+  <div id="nocam"></div>
+  <canvas id="gl"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="status">Loading…</div>
+    <button id="panelBtn" class="rbtn" type="button" aria-label="Settings">⚙️</button>
+    <div id="panel" class="hidden">
+      <label class="row">Pokémon <select id="model"></select></label>
+      <label class="row">Dex #
+        <span style="display:flex;gap:6px"><input id="dexId" type="number" min="1" max="1025" value="25"><button id="loadBtn" type="button">Load</button></span>
+      </label>
+      <label>Height <input id="height" type="range" min="0.2" max="2.5" step="0.05"><span class="val" id="heightV"></span></label>
+      <label>Distance <input id="dist" type="range" min="0.8" max="5" step="0.1" value="2"><span class="val" id="distV"></span></label>
+      <label>Turn <input id="turn" type="range" min="-180" max="180" step="5" value="0"><span class="val" id="turnV"></span></label>
+      <label>Camera FOV <input id="fov" type="range" min="40" max="100" step="1" value="68"><span class="val" id="fovV"></span></label>
+      <label>Eye height <input id="eye" type="range" min="0.8" max="1.9" step="0.05" value="1.35"><span class="val" id="eyeV"></span></label>
+      <label>Light <input id="exposure" type="range" min="0.4" max="2" step="0.05" value="1"><span class="val" id="exposureV"></span></label>
+      <label class="row">Shadow <input id="shadow" type="checkbox" checked></label>
+      <label class="row">Animate <input id="animate" type="checkbox" checked></label>
+      <div class="small" id="info"></div>
+    </div>
+    <button id="frontBtn" type="button">Put it in front of me</button>
+  </div>
+
+  <div id="start">
+    <img src="icon-180.png" width="110" height="110" alt="">
+    <h1>3D Prototype</h1>
+    <p class="sub">Pikachu as a real 3D model standing on your floor. Look down to find it, then judge whether it feels like it is in the room.</p>
+    <button id="startBtn" class="btn" type="button">Start</button>
+    <p class="note">Uses the camera and motion sensors. Nothing is saved.</p>
+  </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+// ---------------- config (all sources pinned to exact versions) ----------------
+const ASSETS = 'https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/regular/';
+const DRACO = 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/';
+// real-world heights in metres from the Pokédex
+const MODELS = {
+  25: { n: 'Pikachu', h: 0.4 }, 1: { n: 'Bulbasaur', h: 0.7 }, 4: { n: 'Charmander', h: 0.6 }, 7: { n: 'Squirtle', h: 0.5 },
+  133: { n: 'Eevee', h: 0.3 }, 6: { n: 'Charizard', h: 1.7 }, 94: { n: 'Gengar', h: 1.5 }, 130: { n: 'Gyarados', h: 6.5 }, 448: { n: 'Lucario', h: 1.2 },
+};
+const D2R = Math.PI / 180;
+const $ = id => document.getElementById(id);
+
+// ---------------- renderer / scene ----------------
+const canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setClearColor(0x000000, 0);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(68, 1, 0.05, 100);
+const settings = { fovLong: 68, eye: 1.35, dist: 2, height: 0.4, turn: 0 };
+camera.position.set(0, settings.eye, 0);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x9a8a78, 1.1);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
+sun.position.set(1.5, 4, 1.2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 12;
+sun.shadow.camera.left = -4; sun.shadow.camera.right = 4; sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -4;
+sun.shadow.bias = -0.0004; sun.shadow.radius = 4;
+scene.add(sun); scene.add(sun.target);
+
+// the floor exists only to catch the shadow; it is otherwise invisible so the camera image shows through
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.ShadowMaterial({ opacity: 0.4 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(12, 24, 0xffffff, 0xffffff);
+grid.material.opacity = 0.18; grid.material.transparent = true; grid.visible = false;
+scene.add(grid);
+
+const holder = new THREE.Group();          // positioned in the room
+const spin = new THREE.Group();            // user "turn" adjustment
+holder.add(spin);
+scene.add(holder);
+let model = null, mixer = null, action = null, clipName = '', triCount = 0;
+
+// ---------------- model loading ----------------
+const draco = new DRACOLoader(); draco.setDecoderPath(DRACO);
+const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
+let loadToken = 0;
+
+async function loadModel(id) {
+  const token = ++loadToken;
+  const meta = MODELS[id] || { n: '#' + id, h: 1.0 };
+  setStatus('Loading ' + meta.n + '…');
+  let gltf;
+  try {
+    gltf = await loader.loadAsync(ASSETS + id + '.glb', ev => { if (ev.total) setStatus('Loading ' + meta.n + ' ' + Math.round(ev.loaded / ev.total * 100) + '%'); });
+  } catch (e) { setStatus('Could not load ' + meta.n); return; }
+  if (token !== loadToken) return;
+  if (model) { spin.remove(model); mixer = null; action = null; }
+  model = gltf.scene;
+  triCount = 0;
+  model.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false;
+      if (o.geometry && o.geometry.index) triCount += o.geometry.index.count / 3;
+      else if (o.geometry) triCount += o.geometry.attributes.position.count / 3;
+    }
+  });
+  spin.add(model);
+  settings.height = meta.h;
+  $('height').value = meta.h; $('heightV').textContent = meta.h.toFixed(2) + ' m';
+  // bigger Pokémon start further away so they fit in view
+  settings.dist = Math.min(5, Math.max(1.5, meta.h * 1.8));
+  $('dist').value = settings.dist; $('distV').textContent = settings.dist.toFixed(1) + ' m';
+  fitModel();
+  placeInFront();
+  clipName = '';
+  if (gltf.animations && gltf.animations.length) {
+    mixer = new THREE.AnimationMixer(model);
+    action = mixer.clipAction(gltf.animations[0]);
+    action.timeScale = 0.6; action.play();
+    clipName = gltf.animations[0].name;
+    action.paused = !$('animate').checked;
+  }
+  setStatus(meta.n + ' · ' + meta.h + ' m · look down and around');
+  $('info').textContent = `${Math.round(triCount).toLocaleString()} triangles · animation: ${clipName || 'none'}`;
+}
+
+// scale to the real-world height, feet on the floor, centred on the holder
+function fitModel() {
+  if (!model) return;
+  model.position.set(0, 0, 0); model.scale.set(1, 1, 1);
+  scene.updateMatrixWorld(true);
+  // measure in the parent's local frame: setFromObject works in world space, and the holder may already be placed in the room
+  const toLocal = spin.matrixWorld.clone().invert();
+  const box = new THREE.Box3().setFromObject(model).applyMatrix4(toLocal);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const s = settings.height / Math.max(size.y, 1e-4);
+  model.scale.setScalar(s);
+  scene.updateMatrixWorld(true);
+  box.setFromObject(model).applyMatrix4(toLocal);
+  const c = new THREE.Vector3(); box.getCenter(c);
+  model.position.set(-c.x, -box.min.y, -c.z);
+  scene.updateMatrixWorld(true);
+}
+
+// place the model on the floor `dist` metres ahead of where the camera is looking right now
+function placeInFront() {
+  const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0;
+  if (f.lengthSq() < 1e-4) f.set(0, 0, -1);
+  f.normalize();
+  holder.position.set(f.x * settings.dist, 0, f.z * settings.dist);
+  faceCamera();
+}
+function faceCamera() {
+  holder.lookAt(camera.position.x, 0, camera.position.z);   // glTF models face +Z, lookAt points +Z at the target
+  spin.rotation.y = settings.turn * D2R;
+}
+
+// ---------------- orientation ----------------
+// standard device-orientation to camera quaternion (the old three.js DeviceOrientationControls math)
+const zee = new THREE.Vector3(0, 0, 1), euler = new THREE.Euler(), q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const targetQ = new THREE.Quaternion();
+let sensors = 'unknown', gotOrientation = false;
+const look = { yaw: 0, pitch: -20 };   // drag-look fallback, degrees
+function screenAngle() {
+  const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+  return a * D2R;
+}
+function onOrientation(e) {
+  if (e.alpha == null || e.beta == null || e.gamma == null) return;
+  if (!gotOrientation) { gotOrientation = true; sensors = 'gyro'; }
+  euler.set(e.beta * D2R, e.alpha * D2R, -e.gamma * D2R, 'YXZ');
+  targetQ.setFromEuler(euler);
+  targetQ.multiply(q1);
+  targetQ.multiply(q0.setFromAxisAngle(zee, -screenAngle()));
+}
+async function enableMotion() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false;
+    }
+  } catch (e) { return false; }
+  window.addEventListener('deviceorientation', onOrientation);
+  return true;
+}
+function enableDragLook() {
+  sensors = 'drag';
+  window.removeEventListener('deviceorientation', onOrientation);
+  setStatus('No motion sensors: drag to look around');
+}
+
+// ---------------- camera video ----------------
+let camStream = null;
+async function enableCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    $('cam').srcObject = camStream; $('cam').classList.remove('hidden');
+    await $('cam').play().catch(() => {});
+    return true;
+  } catch (e) { return false; }
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || $('start').classList.contains('hidden') === false) return;
+  const t = camStream && camStream.getVideoTracks()[0];
+  if (!t || t.readyState === 'ended') await enableCamera(); else $('cam').play().catch(() => {});
+});
+
+// ---------------- layout / render loop ----------------
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  // keep the field of view along the longer screen axis fixed so portrait and landscape match the camera similarly
+  const long = settings.fovLong * D2R;
+  camera.fov = (h >= w ? long : 2 * Math.atan(Math.tan(long / 2) * h / w)) / D2R;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 250));
+
+const clock = new THREE.Clock();
+let frames = 0, fpsT = 0, fps = 0;
+function tick() {
+  const dt = clock.getDelta();
+  if (sensors === 'gyro') camera.quaternion.slerp(targetQ, 0.3);
+  else camera.quaternion.setFromEuler(new THREE.Euler(look.pitch * D2R, look.yaw * D2R, 0, 'YXZ'));
+  if (mixer && !action?.paused) mixer.update(dt);
+  else if (model && !mixer) model.scale.y = model.scale.x * (1 + Math.sin(performance.now() / 600) * 0.012);
+  renderer.render(scene, camera);
+  frames++; fpsT += dt;
+  if (fpsT >= 1) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; $('info').textContent = `${Math.round(triCount).toLocaleString()} triangles · animation: ${clipName || 'none'} · ${fps} fps`; }
+  requestAnimationFrame(tick);
+}
+
+// ---------------- input ----------------
+let drag = null;
+canvas.addEventListener('pointerdown', e => { if (sensors !== 'drag') return; drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => {
+  if (!drag || drag.id !== e.pointerId) return;
+  look.yaw += (e.clientX - drag.x) * 0.25; look.pitch = Math.max(-85, Math.min(85, look.pitch + (e.clientY - drag.y) * 0.25));
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+const endDrag = e => { if (drag && drag.id === e.pointerId) drag = null; };
+canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+window.addEventListener('keydown', e => {
+  if (sensors !== 'drag') return;
+  if (e.key === 'ArrowLeft') look.yaw += 5; if (e.key === 'ArrowRight') look.yaw -= 5;
+  if (e.key === 'ArrowUp') look.pitch += 5; if (e.key === 'ArrowDown') look.pitch -= 5;
+});
+
+function setStatus(t) { $('status').textContent = t; }
+function bindRange(id, key, fmt, after) {
+  const el = $(id), out = $(id + 'V');
+  const apply = () => { settings[key] = parseFloat(el.value); out.textContent = fmt(settings[key]); after && after(); };
+  el.addEventListener('input', apply); apply();
+}
+for (const [id, m] of Object.entries(MODELS)) { const o = document.createElement('option'); o.value = id; o.textContent = `${m.n} (${m.h} m)`; $('model').appendChild(o); }
+$('model').value = '25';
+$('model').addEventListener('change', () => { $('dexId').value = $('model').value; loadModel(parseInt($('model').value, 10)); });
+$('loadBtn').addEventListener('click', () => loadModel(parseInt($('dexId').value, 10) || 25));
+bindRange('height', 'height', v => v.toFixed(2) + ' m', fitModel);
+bindRange('dist', 'dist', v => v.toFixed(1) + ' m', placeInFront);
+bindRange('turn', 'turn', v => v + '°', faceCamera);
+bindRange('fov', 'fovLong', v => v + '°', resize);
+bindRange('eye', 'eye', v => v.toFixed(2) + ' m', () => { camera.position.y = settings.eye; });
+bindRange('exposure', 'exposure', v => v.toFixed(2), () => { renderer.toneMappingExposure = settings.exposure; });
+$('shadow').addEventListener('change', () => { ground.visible = $('shadow').checked; });
+$('animate').addEventListener('change', () => { if (action) action.paused = !$('animate').checked; });
+$('panelBtn').addEventListener('click', () => $('panel').classList.toggle('hidden'));
+$('frontBtn').addEventListener('click', placeInFront);
+
+$('startBtn').addEventListener('click', async () => {
+  $('startBtn').disabled = true;
+  const motion = enableMotion();
+  const camOk = await enableCamera();
+  const motionOk = await motion;
+  $('start').classList.add('hidden'); $('hud').classList.remove('hidden');
+  if (camOk) $('nocam').classList.add('hidden'); else grid.visible = true;
+  resize();
+  if (!motionOk) enableDragLook();
+  else setTimeout(() => { if (!gotOrientation) enableDragLook(); }, 1500);
+  // give the sensors a moment so "in front" means where the phone is actually pointing
+  setTimeout(placeInFront, 400);
+  loadModel(25);
+});
+
+resize();
+tick();
+window.__proto3d = { scene, camera, holder, settings, loadModel, placeInFront, get model() { return model; }, get fps() { return fps; }, get sensors() { return sensors; } };
+</script>
+</body>
+</html>
